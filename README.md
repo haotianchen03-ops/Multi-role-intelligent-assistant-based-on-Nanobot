@@ -17,8 +17,6 @@
 - [快速开始](#快速开始)
 - [飞书机器人配置](#飞书机器人配置)
 - [知识库问答配置](#知识库问答配置)
-- [安全说明](#安全说明)
-- [部署到 GitHub](#部署到-github)
 
 ---
 
@@ -294,8 +292,6 @@ $env:NANOBOT_HOME="C:\path\to\.nanobot"
 }
 ```
 
-不要把真实 key 提交到 GitHub。
-
 ### 5. 本地 CLI 测试
 
 ```bash
@@ -395,49 +391,4 @@ NANOBOT_TOOLS__MILVUS_RAG__EMBEDDING_DEVICE=cpu
 python -m nanobot.scripts.import_knowledge --kb-path examples/knowledge_base --target all
 ```
 
----
 
-## 安全说明
-
-公开仓库中不应包含：
-
-- `config.json` 中的真实 API Key
-- 飞书 `appSecret`
-- OpenAI、OpenRouter、DeepSeek 等模型密钥
-- 数据库真实密码
-- `.nanobot/` 运行目录
-- `sessions/` 聊天历史
-- `media/` 图片和文件
-- `data/` 向量库、SQLite、embedding 索引
-- `.env`
-
-本项目已经在 `.gitignore` 中排除了常见运行数据，但发布前仍建议执行一次敏感信息检查。
-
----
-
-## 部署到 GitHub
-
-如果你希望 GitHub Contributors 只显示自己，请使用全新的 Git 历史：
-
-```bash
-git init
-git config user.name "your-github-username"
-git config user.email "your-github-email"
-git add .
-git commit -m "Initial release"
-git branch -M main
-git remote add origin https://github.com/<your-username>/<your-repo>.git
-git push -u origin main
-```
-
-如果遇到 Git safe.directory 报错：
-
-```bash
-git config --global --add safe.directory C:/Users/sbsbs/Documents/Codex/2026-05-07/github-contributors/nanobot-feishu-github
-```
-
----
-
-## License
-
-本项目基于 MIT License 发布。由于项目基于 nanobot 二次开发，请保留原项目许可证和版权声明。
