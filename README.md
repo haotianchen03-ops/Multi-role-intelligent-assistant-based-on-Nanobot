@@ -1,493 +1,443 @@
-﻿<div align="center">
-  <img src="nanobot-feishu_logo.jpg" alt="nanobot" width="500">
-</div>
+# Multi-role Intelligent Assistant Based on Nanobot
 
-# nanobot-feishu: Feishu AI Assistant
+基于 nanobot 二次开发的飞书智能问答助手。项目围绕企业知识库问答、飞书机器人接入、长短期记忆、工具调用、文档解析、图片生成和多会话管理做了完整扩展，适合部署为一个可在飞书中使用的个人或团队 AI 助手。
 
-A Feishu-focused AI assistant based on [nanobot](https://github.com/HKUDS/nanobot), an ultra-lightweight personal AI assistant framework. This version extends nanobot with Feishu integration, advanced personal memory management, streaming card delivery, token budget visualization, knowledge-base retrieval, and built-in tools for PDF parsing, image generation, Notion database management, and more.
-
-## 馃摙 News
-
-- **2026-02-10**: First release of the Feishu-focused nanobot fork!
-- **2026-02-24**: CLI mode with Feishu message send support.
-- **2026-03-02**: Notion tool and Cloudinary integration for image hosting.
-- **2026-03-08**: Switch Feishu delivery to interactive card markdown; simplify `message` tool into rich markdown + file modes.
-- **2026-03-19**: Enhanced Notion tool with robust code fence parsing, nested list support, and LaTeX formula handling.
-- **2026-03-21**: Session Context Compressor for automatic conversation history compression.
-- **2026-03-23**: Feishu CardKit streaming mode with real-time token usage chart.
-- **2026-03-24**: Tool call streaming support (real-time tool invocation push).
-- **2026-03-31**: Advanced long-term personal memory system (SQLite store + LLM compiler + retriever + `memory_search` tool).
+本项目基于 [HKUDS/nanobot](https://github.com/HKUDS/nanobot) 的轻量级 agent 框架进行扩展，保留其简洁的 CLI 和工具系统，同时增强了飞书通道、知识库检索、上下文压缩、长期记忆和可观测性。
 
 ---
 
-## 馃専 What's Changed
+## 目录
 
-This fork introduces the following features and modifications on top of the original nanobot project:
-
-### 1. 馃 Personal Memory System *(New)*
-
-A full-featured personal long-term memory system backed by SQLite, enabling the agent to remember and recall facts, preferences, decisions, and project context across sessions.
-
-| Component | Description |
-|-----------|-------------|
-| `PersonalMemoryStore` | SQLite-backed canonical store with BM25+priority+recency ranking |
-| `MemoryCompiler` | LLM-assisted extraction, merging, and deduplication of memory candidates from conversations |
-| `MemoryRetriever` | Builds retrieval queries from session context and injects relevant memories into prompts |
-| `memory_search` tool | Allows the agent to actively query the memory database (supports filters by kind, scope, slot prefix) |
-
-- **Memory kinds**: `preference`, `decision`, `reference`, `constraint`, `profile`
-- **Scopes**: `global`, `topic`, `project` (with optional `scope_key`)
-- **Auto-injection**: Retrieved memories are automatically appended to the system prompt each turn
-- Configured via `tools.memory_system` in `config.json`
-
-### 2. 馃搲 Session Context Compressor *(New)*
-
-Automatically compresses long conversation histories into a rolling summary to manage token budgets and prevent context overflow.
-
-- **Trigger conditions**: Message count threshold or estimated token count threshold (configurable)
-- **Rolling summary**: Preserves key decisions and context while discarding verbose history
-- **Keep recent**: Always retains the N most recent messages for continuity
-- **Configurable model**: Can use a separate (cheaper) model for compression
-- Configured via `tools.context_compression` in `config.json`
-
-### 3. 馃摗 Feishu CardKit Streaming *(New)*
-
-Real-time streaming message delivery via Feishu's CardKit API, replacing the previous "send once" pattern.
-
-- **Streaming text**: Bot responses are streamed token-by-token to the user in real time
-- **Token usage chart**: Embedded chart visualization showing input/output token consumption and budget residue
-- **Tool call streaming**: When the agent invokes a tool, a real-time notification is pushed showing the tool name and parameters
-- **Preemptive timeout handling**: Automatic fallback to regular messages before CardKit's hard timeout
-- **Throttling**: Local rate limiting to stay within Feishu API limits
-- Configured via `channels.feishu.streaming*` fields in `config.json`
-
-### 4. 馃搫 Tool: `parse_pdf_mineru`
-
-A document parsing tool powered by the [MinerU](https://mineru.net) v4 batch APIs. Converts PDFs to structured Markdown with images.
-
-- Supports batch URL mode and batch local file upload mode
-- Asynchronous polling with configurable timeout and interval
-- Supports model version override (`pipeline` / `vlm` / `MinerU-HTML`)
-- Downloads and extracts `full.md` and `images/` from result ZIP archives
-- Configured via `tools.mineru` in `config.json`
-
-### 5. 馃柤锔?Tool: `image_generate`
-
-An image generation tool using OpenAI-compatible endpoints, with optional direct delivery to Feishu.
-
-- **Text-to-image**: Generate images from a text prompt
-- **Image editing**: Accept single or multiple input images for editing tasks
-- **Aspect ratio control**: Supports `1:1`, `16:9`, `original`, etc.
-- **Feishu integration**: Optionally upload and send the generated image to Feishu directly
-- Configured via `tools.image_gen` in `config.json`
-
-### 6. 馃棧锔?Tool: `session_manage`
-
-Programmatic session management for maintaining multiple parallel conversation contexts.
-
-- **`create`**: Create a new session with auto-generated or custom title
-- **`switch`**: Switch to an existing session by key
-- **`list`**: List all sessions with titles and timestamps
-- **`current`**: Show the currently active session
-- **`reset`**: Clear active session override
-
-### 7. 馃摀 Tool: `notion`
-
-Notion database management tool for ingesting and organizing documents.
-
-- **`inspect_database`**: View database schema and recent entries
-- **`upload_file`**: Upload local files (Markdown, PDF, etc.) as Notion pages with full rich-text rendering
-- **`list_items`**: List database entries with filtering
-- **`reclassify_item`**: Change document type classification
-- **`ensure_partitions`**: Create type-based database partitions
-- **Rich Markdown 鈫?Notion blocks**: Supports tables, code blocks (language-aware), nested lists, inline math (LaTeX), bold/italic/strikethrough, links, and images
-- **Cloudinary integration**: Optional image hosting for Notion page images
-- Configured via `tools.notion` in `config.json`
-
-### 8. 馃攢 Tool: `spawn`
-
-Spawn asynchronous subagents for complex or time-consuming background tasks.
-
-- Subagents run independently and report results back to the main agent
-- Supports custom labels for task identification
-- Full tool access inherited from the parent agent
-
-### 9. 馃攧 Enhanced Feishu Channel
-
-The Feishu channel implementation has been significantly upgraded:
-
-- **Interactive card messages**: Responses sent as Feishu `interactive` template cards with markdown content
-- **Markdown local image auto-upload**: `![alt](/abs/path/to/image.png)` 鈫?auto-uploaded with Feishu `image_key`
-- **Image receiving**: Incoming images are downloaded and saved to a configurable media directory
-- **File sending**: Upload and send files (PDF, DOCX, XLSX, PPTX, etc.) as file messages (30MB limit)
-- **Reaction feedback**: Automatic thumbs-up reaction on received messages as a "seen" indicator
-
-### 10. 馃攳 Transparent Tool-Call Notifications
-
-- Real-time notification pushed to user when the agent invokes a tool (tool name + parameters)
-- Tool-call records written into session history for full trace
-- Makes agent behavior fully transparent and debuggable
+- [项目概览](#项目概览)
+- [核心能力](#核心能力)
+- [系统架构](#系统架构)
+- [核心模块](#核心模块)
+- [目录结构](#目录结构)
+- [技术栈](#技术栈)
+- [快速开始](#快速开始)
+- [飞书机器人配置](#飞书机器人配置)
+- [知识库问答配置](#知识库问答配置)
+- [安全说明](#安全说明)
+- [部署到 GitHub](#部署到-github)
 
 ---
 
-## 馃殌 Quick Start
+## 项目概览
 
-### 1. Install
+这是一个面向飞书场景的多角色智能助手系统。用户可以在飞书中向机器人提问，系统会根据上下文、长期记忆、知识库和可用工具生成回答，并通过飞书卡片、文本、图片或文件形式返回结果。
+
+典型使用场景包括：
+
+- 企业内部知识库问答
+- 飞书群聊或私聊 AI 助手
+- 多轮上下文记忆与偏好记忆
+- PDF、网页、Notion、知识库文档辅助处理
+- 后台任务、定时任务和子代理任务
+- 对工具调用过程进行透明展示和记录
+
+---
+
+## 核心能力
+
+| 能力 | 说明 |
+|------|------|
+| 飞书机器人接入 | 支持飞书长连接 WebSocket、消息接收、卡片回复、图片上传和文件发送 |
+| 智能问答 | 通过 LiteLLM 接入 OpenAI、OpenRouter、DeepSeek、Gemini、Moonshot 等模型 |
+| 知识库检索 | 支持 PostgreSQL 结构化知识库和 Milvus/Chroma 向量检索 |
+| 长期记忆 | 使用 SQLite 保存用户偏好、决策、约束、资料和项目上下文 |
+| 上下文压缩 | 自动压缩长会话，降低 token 消耗并保持对话连续性 |
+| 工具调用 | 内置文件、Shell、网页搜索、PDF 解析、Notion、图片生成、消息发送等工具 |
+| 多会话管理 | 支持创建、切换、列出和重置会话 |
+| 子代理执行 | 支持 spawn 子代理处理复杂或耗时任务 |
+| 定时任务 | 支持 cron 风格的后台定时任务 |
+| 可观测性 | 飞书中可展示工具调用、token 使用和任务执行状态 |
+
+---
+
+## 系统架构
+
+```text
+用户 / 飞书群聊
+        |
+        v
+飞书开放平台 WebSocket 长连接
+        |
+        v
+nanobot.channels.feishu
+        |
+        v
+MessageBus 消息总线
+        |
+        v
+AgentLoop 核心推理循环
+        |
+        +--> LiteLLM Provider
+        |       +--> OpenAI / OpenRouter / DeepSeek / Gemini / Moonshot / 自托管模型
+        |
+        +--> ContextBuilder
+        |       +--> 会话历史
+        |       +--> 长期记忆
+        |       +--> 知识库检索结果
+        |
+        +--> ToolRegistry
+                +--> 文件工具
+                +--> 网页搜索
+                +--> PDF 解析
+                +--> Notion
+                +--> 图片生成
+                +--> 知识库检索
+                +--> 子代理
+                +--> 定时任务
+```
+
+---
+
+## 核心模块
+
+### 1. Feishu Channel
+
+`nanobot/channels/feishu.py` 是飞书接入核心模块，负责：
+
+- 建立飞书长连接
+- 接收私聊和群聊消息
+- 发送普通文本、互动卡片、图片和文件
+- 支持 CardKit 流式更新
+- 自动上传本地图片并替换为飞书 `image_key`
+- 对收到的消息进行回执和反应反馈
+
+### 2. Agent Loop
+
+`nanobot/agent/loop.py` 是智能体主循环，负责：
+
+- 构建系统提示词和上下文
+- 调用大模型
+- 判断并执行工具调用
+- 记录工具结果
+- 汇总 token 使用情况
+- 将最终结果发送回通道
+
+### 3. Memory System
+
+长期记忆系统由以下模块组成：
+
+| 模块 | 作用 |
+|------|------|
+| `personal_memory_store.py` | SQLite 记忆存储 |
+| `memory_compiler.py` | 从对话中提取和合并记忆 |
+| `memory_retriever.py` | 根据当前上下文召回相关记忆 |
+| `memory_search.py` | 让 agent 主动搜索长期记忆 |
+
+记忆类型包括 `preference`、`decision`、`reference`、`constraint` 和 `profile`。
+
+### 4. Knowledge Base
+
+项目提供两类知识库能力：
+
+- PostgreSQL：适合 FAQ、工单、产品文档等结构化数据
+- Milvus/Chroma：适合语义检索和 RAG 问答
+
+示例知识库位于：
+
+```text
+examples/knowledge_base/
+```
+
+### 5. Tool System
+
+内置工具位于 `nanobot/agent/tools/`，包括：
+
+| 工具 | 说明 |
+|------|------|
+| `filesystem` | 文件读取、写入、追加、编辑和目录查看 |
+| `shell` | 执行 Shell 命令 |
+| `web` | 网页搜索和网页抓取 |
+| `pdf_mineru` | 使用 MinerU 解析 PDF |
+| `notion` | Notion 数据库管理和文档上传 |
+| `image_generate` | OpenAI 兼容图片生成接口 |
+| `message` | 主动发送消息到飞书等通道 |
+| `spawn` | 启动子代理 |
+| `cron` | 定时任务 |
+| `knowledge_retriever` | 知识库检索 |
+| `session_manage` | 会话管理 |
+
+---
+
+## 目录结构
+
+```text
+nanobot-feishu-github/
+|-- README.md                       # 项目说明
+|-- pyproject.toml                  # Python 包配置
+|-- Dockerfile                      # Docker 构建配置
+|-- LICENSE                         # 开源许可证
+|-- SECURITY.md                     # 安全说明
+|-- KNOWLEDGE_BASE_SETUP.md         # 知识库配置说明
+|-- .env.example.knowledge          # 知识库环境变量示例
+|-- PUBLICATION_NOTES.md            # 发布清理记录
+|
+|-- nanobot/                        # Python 主程序
+|   |-- agent/                      # Agent 主循环、上下文、记忆、子代理
+|   |-- agent/tools/                # 工具系统
+|   |-- channels/                   # 飞书、Telegram、Discord、WhatsApp 通道
+|   |-- cli/                        # 命令行入口
+|   |-- config/                     # 配置加载和 Pydantic schema
+|   |-- cron/                       # 定时任务服务
+|   |-- heartbeat/                  # 心跳服务
+|   |-- providers/                  # LLM Provider
+|   |-- services/                   # PostgreSQL 和向量知识库服务
+|   |-- session/                    # 会话管理和上下文压缩
+|   |-- skills/                     # 内置技能说明
+|   |-- scripts/                    # 知识库导入脚本
+|   `-- utils/                      # 通用工具函数
+|
+|-- bridge/                         # TypeScript bridge 服务
+|   |-- package.json
+|   |-- tsconfig.json
+|   `-- src/
+|
+|-- examples/
+|   `-- knowledge_base/             # 示例知识库 Markdown 文档
+|
+|-- prompts/                        # Prompt 设计文档
+`-- tests/                          # 测试用例
+```
+
+---
+
+## 技术栈
+
+| 技术 | 用途 |
+|------|------|
+| Python 3.10+ | 主程序和 agent 框架 |
+| Typer | CLI 命令行 |
+| Pydantic | 配置和数据结构校验 |
+| LiteLLM | 多模型供应商统一调用 |
+| lark-oapi | 飞书开放平台 SDK |
+| PostgreSQL / psycopg3 | 结构化知识库和业务数据 |
+| Milvus Lite / Chroma | 向量检索与 RAG |
+| SQLite | 长期记忆和本地状态 |
+| httpx / websockets | HTTP 与 WebSocket 通信 |
+| Notion API | Notion 数据库集成 |
+| MinerU | PDF 文档解析 |
+| TypeScript | bridge 服务 |
+| pytest | 自动化测试 |
+
+---
+
+## 快速开始
+
+### 1. 克隆项目
 
 ```bash
 git clone https://github.com/<your-username>/<your-repo>.git
 cd <your-repo>
+```
+
+### 2. 创建环境并安装
+
+```bash
+python -m venv .venv
+```
+
+Windows:
+
+```bash
+.venv\Scripts\activate
 pip install -e .
 ```
 
-### 2. Initialize
+macOS / Linux:
+
+```bash
+source .venv/bin/activate
+pip install -e .
+```
+
+### 3. 初始化配置
 
 ```bash
 nanobot onboard
 ```
 
-### 3. Configure
+默认配置目录为：
 
-By default nanobot stores data in `~/.nanobot`. To use a custom directory, set `NANOBOT_HOME`:
-
-```bash
-export NANOBOT_HOME=/path/to/your/.nanobot
+```text
+~/.nanobot/config.json
 ```
 
-Then edit `$NANOBOT_HOME/config.json`. See [Configuration Reference](#configuration-reference) below.
-
-### 4. Set Up Feishu Bot
-
-1. Visit [Feishu Open Platform](https://open.feishu.cn/app) 鈫?Create a new app 鈫?Enable **Bot** capability
-2. **Permissions**: Add the following scopes:
-   - `im:message` 鈥?Send messages
-   - `im:message:send_as_bot` 鈥?Send as bot
-   - `im:resource` 鈥?Download images
-   - `im:message:readonly` 鈥?Receive messages
-   - `im:message.p2p_msg:readonly` 鈥?Receive private messages
-   - `docs:document.content:read` 鈥?Read cloud document content
-   - `cardkit:card:write` 鈥?Create/update streaming cards
-   - `contact:user.employee_id:readonly` 鈥?Identify users (multi-user scenarios)
-3. **Events**: Subscribe to `im.message.receive_v1` 鈫?Select **Long Connection** (WebSocket) mode (no public IP required)
-4. Get **App ID** and **App Secret** from "Credentials & Basic Info"
-5. **Card Template**: Create a card template in Feishu Card Builder with a markdown content variable, note down the template ID
-6. Publish the app
-
-### 5. Run
-
-Start the gateway (Feishu bot):
+也可以通过环境变量指定：
 
 ```bash
-nanobot gateway
+set NANOBOT_HOME=C:\path\to\.nanobot
 ```
 
-Or chat directly via CLI:
+PowerShell:
+
+```powershell
+$env:NANOBOT_HOME="C:\path\to\.nanobot"
+```
+
+### 4. 配置模型 Key
+
+在 `config.json` 中填写至少一个模型供应商，例如：
+
+```json
+{
+  "providers": {
+    "openai": {
+      "apiKey": "your_openai_api_key"
+    },
+    "openrouter": {
+      "apiKey": "your_openrouter_api_key"
+    }
+  }
+}
+```
+
+不要把真实 key 提交到 GitHub。
+
+### 5. 本地 CLI 测试
 
 ```bash
-nanobot agent -m "Hello!"
+nanobot agent -m "你好，介绍一下你能做什么"
 ```
 
-Interactive CLI mode:
+进入交互模式：
 
 ```bash
 nanobot agent
 ```
 
+### 6. 启动飞书网关
+
+```bash
+nanobot gateway
+```
+
 ---
 
-## Configuration Reference
+## 飞书机器人配置
 
-Config file: `$NANOBOT_HOME/config.json` (default: `~/.nanobot/config.json`)
+1. 打开 [飞书开放平台](https://open.feishu.cn/app)
+2. 创建企业自建应用
+3. 启用机器人能力
+4. 在凭证与基础信息中获取 `App ID` 和 `App Secret`
+5. 事件订阅选择长连接模式
+6. 订阅 `im.message.receive_v1`
+7. 添加必要权限并发布应用
 
-### 馃攲 Providers
+建议权限包括：
 
-| Provider | Purpose | Get API Key |
-|----------|---------|-------------|
-| `openrouter` | LLM (recommended, access to all models) | [openrouter.ai](https://openrouter.ai) |
-| `anthropic` | LLM (Claude direct) | [console.anthropic.com](https://console.anthropic.com) |
-| `openai` | LLM (GPT / o-series direct) | [platform.openai.com](https://platform.openai.com) |
-| `deepseek` | LLM (DeepSeek direct) | [platform.deepseek.com](https://platform.deepseek.com) |
-| `gemini` | LLM (Gemini direct) | [aistudio.google.com](https://aistudio.google.com) |
-| `groq` | LLM + Voice transcription (Whisper) | [console.groq.com](https://console.groq.com) |
-| `zhipu` | LLM (GLM/ZhipuAI direct) | [open.bigmodel.cn](https://open.bigmodel.cn) |
-| `moonshot` | LLM (Kimi/Moonshot direct) | [platform.moonshot.cn](https://platform.moonshot.cn) |
-| `vllm` | LLM (self-hosted vLLM) | 鈥?|
+| 权限 | 用途 |
+|------|------|
+| `im:message` | 发送消息 |
+| `im:message:send_as_bot` | 以机器人身份发送消息 |
+| `im:resource` | 下载和上传图片资源 |
+| `im:message:readonly` | 读取消息 |
+| `im:message.p2p_msg:readonly` | 读取私聊消息 |
+| `cardkit:card:write` | 创建和更新互动卡片 |
+| `docs:document.content:read` | 读取飞书云文档内容 |
 
-### 馃洜锔?Tool-Specific Configuration
-
-| Tool | Config Path | Required Keys | Description |
-|------|------------|---------------|-------------|
-| Web Search | `tools.web.search` | `apiKey` | [Serper](https://serper.dev) API key |
-| MinerU PDF | `tools.mineru` | `token` | [MinerU](https://mineru.net) API token |
-| Image Generation | `tools.image_gen` | `api_base`, `api_key`, `model_name` | OpenAI-compatible image API |
-| Notion | `tools.notion` | `api_key`, `database_id` | [Notion Integration](https://www.notion.so/my-integrations) token |
-| Memory System | `tools.memory_system` | 鈥?(all optional) | Personal memory database config |
-| Context Compression | `tools.context_compression` | 鈥?(all optional) | Session compression settings |
-
-### 馃摗 Feishu Channel
-
-| Field | Description | Default |
-|-------|-------------|---------|
-| `appId` | App ID from Feishu Open Platform | 鈥?|
-| `appSecret` | App Secret from Feishu Open Platform | 鈥?|
-| `encryptKey` | Encrypt Key (optional for WebSocket mode) | `""` |
-| `verificationToken` | Verification Token (optional for WebSocket mode) | `""` |
-| `allowFrom` | Allowed user `open_id` list; empty = allow all | `[]` |
-| `mediaDir` | Directory to save received media | `$NANOBOT_HOME/media` |
-| `cardTemplateId` | Feishu card template ID for interactive messages | `"AAqK6dMNHUVKE"` |
-| `cardTemplateVersionName` | Card template version | `"1.0.0"` |
-| `streamingEnabled` | Enable CardKit streaming mode | `false` |
-| `streamingPrintFrequencyMsDefault` | Client render frequency (ms) | `20` |
-| `streamingPrintStepDefault` | Characters per render tick | `1` |
-| `streamingPrintStrategy` | Streaming print policy (`fast` / `delay`) | `"delay"` |
-| `streamingMaxUpdatesPerSec` | Local throttling for update requests | `50` |
-| `streamingPreemptiveTimeoutSec` | Preemptive switch to regular messages before CardKit timeout | `480` |
-| `streamingFinalizeTimeoutSec` | Reserved timeout for graceful finalize | `45` |
-
-### 馃 Memory System
-
-| Field | Description | Default |
-|-------|-------------|---------|
-| `enabled` | Enable personal memory system | `false` |
-| `db_path` | SQLite database path | `$WORKSPACE/memory/personal_memory.db` |
-| `default_user_id` | Default user ID for shared memories | `"shared"` |
-| `retrieval_top_k` | Max memories to retrieve per turn | `5` |
-| `core_memory_max_items` | Max items in auto core memory block | `8` |
-| `max_candidates_per_run` | Max new candidates extracted per conversation turn | `3` |
-| `llm_model` | Model for memory extraction (null = use default) | `null` |
-| `update_memory_md` | Sync core memories to `MEMORY.md` | `true` |
-| `retrieval_weights.*` | Fine-tune ranking weights (keyword, tag, summary, content, priority, recency, kind, scope) | see schema |
-
-### 馃搲 Context Compression
-
-| Field | Description | Default |
-|-------|-------------|---------|
-| `enabled` | Enable session context compression | `false` |
-| `trigger_by_message_count` | Compress when message count exceeds this | `80` |
-| `trigger_by_estimated_tokens` | Compress when estimated tokens exceed this | `12000` |
-| `keep_recent_messages` | Always keep N most recent messages | `25` |
-| `summary_max_tokens` | Max tokens for each compression summary | `800` |
-| `max_rolling_summary_tokens` | Max accumulated rolling summary tokens | `2000` |
-| `summary_model` | Model for compression (null = use default) | `null` |
-| `min_interval_seconds` | Min interval between compression runs | `60` |
-
-### 馃 Agent Defaults
-
-| Field | Description | Default |
-|-------|-------------|---------|
-| `model` | Default LLM model | `"anthropic/claude-opus-4-5"` |
-| `max_tokens` | Max output tokens per response | `8192` |
-| `context_window_tokens` | Context window budget (null = unlimited) | `null` |
-| `token_budget_mode` | Budget mode: `"output"` or `"context"` | `"output"` |
-| `merge_subagent_usage` | Merge subagent token usage into parent | `true` |
-| `temperature` | Sampling temperature | `0.7` |
-| `reasoning_effort` | Reasoning effort hint (model-specific) | `null` |
-| `max_tool_iterations` | Max tool call iterations per turn | `20` |
-
-### 馃摠 Message Tool Usage
-
-The `message` tool supports two message categories:
-
-1. **Rich markdown content** 鈥?Use `content` to send plain text, image-only, or mixed text+image messages
-   - Local images in markdown should use absolute paths: `![alt](/abs/path/to/image.png)`
-   - Images are auto-uploaded and replaced with Feishu `image_key` at send time
-2. **File messages** 鈥?Use `file_path` or `file_base64` to send files
-
-<details>
-<summary><b>Full config.json example</b></summary>
+配置示例：
 
 ```json
 {
-  "agents": {
-    "defaults": {
-      "workspace": "$NANOBOT_HOME/workspace",
-      "model": "openai/claude-sonnet-4-6-thinking",
-      "maxTokens": 10240,
-      "contextWindowTokens": null,
-      "tokenBudgetMode": "output",
-      "mergeSubagentUsage": true,
-      "temperature": 0.7,
-      "reasoningEffort": null,
-      "maxToolIterations": 50
-    }
-  },
-  "providers": {
-    "openrouter": {
-      "apiKey": "sk-or-v1-xxx"
-    },
-    "openai": {
-      "apiKey": "sk-xxx",
-      "apiBase": "https://your-proxy.com/v1/"
-    }
-  },
   "channels": {
     "feishu": {
       "enabled": true,
-      "appId": "cli_xxx",
-      "appSecret": "xxx",
-      "encryptKey": "",
-      "verificationToken": "",
-      "allowFrom": [],
-      "cardTemplateId": "AAqK6dMNHUVKE",
-      "cardTemplateVersionName": "1.0.0",
-      "streamingEnabled": true,
-      "streamingPrintFrequencyMsDefault": 20,
-      "streamingPrintStepDefault": 1,
-      "streamingPrintStrategy": "delay",
-      "streamingMaxUpdatesPerSec": 50,
-      "streamingPreemptiveTimeoutSec": 480,
-      "streamingFinalizeTimeoutSec": 45
+      "appId": "your_app_id",
+      "appSecret": "your_app_secret",
+      "cardTemplateId": "your_card_template_id",
+      "streamingEnabled": true
     }
-  },
-  "tools": {
-    "web": {
-      "search": {
-        "apiKey": "serper-api-key",
-        "maxResults": 5
-      }
-    },
-    "exec": {
-      "timeout": 60
-    },
-    "mineru": {
-      "api_url": "https://mineru.net/api/v4/extract/task",
-      "token": "mineru-token",
-      "model_version": "vlm",
-      "timeout": 100,
-      "poll_interval": 5
-    },
-    "image_gen": {
-      "api_base": "https://your-api.com/v1",
-      "api_key": "your-key",
-      "model_name": "gemini-3-pro-image-preview",
-      "timeout": 120,
-      "retry_attempts": 3
-    },
-    "notion": {
-      "enabled": true,
-      "api_key": "secret_xxx",
-      "database_id": "default-db-id",
-      "type_database_map": {
-        "notes": "db-id-for-notes",
-        "reports": "db-id-for-reports"
-      },
-      "type_property": "Type",
-      "cloudinary": {
-        "cloud_name": "",
-        "api_key": "",
-        "api_secret": ""
-      }
-    },
-    "tool_history": {
-      "max_events": 5,
-      "preview_chars": 160,
-      "max_chars": 800
-    },
-    "context_compression": {
-      "enabled": true,
-      "trigger_by_message_count": 80,
-      "trigger_by_estimated_tokens": 12000,
-      "keep_recent_messages": 25,
-      "summary_max_tokens": 800,
-      "max_rolling_summary_tokens": 2000,
-      "summary_model": null,
-      "min_interval_seconds": 60
-    },
-    "memory_system": {
-      "enabled": true,
-      "db_path": "$NANOBOT_HOME/workspace/memory/personal_memory.db",
-      "default_user_id": "shared",
-      "retrieval_top_k": 5,
-      "core_memory_max_items": 8,
-      "max_candidates_per_run": 3,
-      "llm_model": null,
-      "update_memory_md": true,
-      "retrieval_weights": {
-        "keyword": 2.0,
-        "tag": 1.5,
-        "summary": 1.5,
-        "content": 1.0,
-        "priority": 0.15,
-        "recency": 0.3,
-        "kind": 0.5,
-        "scope": 0.5
-      }
-    },
-    "restrictToWorkspace": false
   }
 }
 ```
 
-</details>
-
 ---
 
-## CLI Reference
+## 知识库问答配置
 
-| Command | Description |
-|---------|-------------|
-| `nanobot onboard` | Initialize config & workspace |
-| `nanobot agent -m "..."` | Send a single message to the agent |
-| `nanobot agent` | Interactive chat mode |
-| `nanobot gateway` | Start the gateway (Feishu bot + cron service) |
-| `nanobot status` | Show current status |
-| `nanobot cron add` | Add a scheduled task |
-| `nanobot cron list` | List scheduled tasks |
-| `nanobot cron remove <id>` | Remove a scheduled task |
+### PostgreSQL
 
----
+复制示例环境变量：
 
-## 馃搧 Project Structure
-
-```
-nanobot/
-鈹溾攢鈹€ agent/                       # Core agent logic
-鈹?  鈹溾攢鈹€ loop.py                  #   Agent loop (LLM 鈫?tool execution + token monitor)
-鈹?  鈹溾攢鈹€ context.py               #   Prompt & context builder
-鈹?  鈹溾攢鈹€ memory.py                #   File-based persistent memory
-鈹?  鈹溾攢鈹€ memory_compiler.py       #   鈽?LLM-assisted personal memory extraction & merging
-鈹?  鈹溾攢鈹€ memory_retriever.py      #   鈽?Personal memory retrieval & prompt injection
-鈹?  鈹溾攢鈹€ personal_memory_store.py #   鈽?SQLite-backed long-term memory store
-鈹?  鈹溾攢鈹€ skills.py                #   Skills loader
-鈹?  鈹溾攢鈹€ subagent.py              #   Background task execution
-鈹?  鈹斺攢鈹€ tools/                   #   Built-in tools
-鈹?      鈹溾攢鈹€ base.py              #     Tool base class
-鈹?      鈹溾攢鈹€ registry.py          #     Dynamic tool registry
-鈹?      鈹溾攢鈹€ filesystem.py        #     File read/write/edit/list/append
-鈹?      鈹溾攢鈹€ shell.py             #     Shell command execution
-鈹?      鈹溾攢鈹€ web.py               #     Web search & fetch
-鈹?      鈹溾攢鈹€ message.py           #     Message sending (rich markdown + file)
-鈹?      鈹溾攢鈹€ pdf_mineru.py        #     鈽?PDF parsing via MinerU API
-鈹?      鈹溾攢鈹€ image_generate.py    #     鈽?Image generation & Feishu delivery
-鈹?      鈹溾攢鈹€ session_manage.py    #     鈽?Session create/switch/reset
-鈹?      鈹溾攢鈹€ notion.py            #     鈽?Notion database management
-鈹?      鈹溾攢鈹€ memory_search.py     #     鈽?Personal memory search
-鈹?      鈹溾攢鈹€ spawn.py             #     鈽?Subagent spawning
-鈹?      鈹斺攢鈹€ cron.py              #     Cron task management
-鈹溾攢鈹€ channels/                    # Chat channel integrations
-鈹?  鈹溾攢鈹€ base.py                  #   Base channel interface
-鈹?  鈹溾攢鈹€ manager.py               #   Channel manager
-鈹?  鈹溾攢鈹€ feishu.py                #   鈽?Enhanced Feishu (CardKit streaming, token chart, images, files)
-鈹?  鈹溾攢鈹€ telegram.py              #   Telegram
-鈹?  鈹溾攢鈹€ discord.py               #   Discord
-鈹?  鈹斺攢鈹€ whatsapp.py              #   WhatsApp
-鈹溾攢鈹€ session/                     # Conversation session management
-鈹?  鈹溾攢鈹€ manager.py               #   鈽?Session CRUD with active session tracking
-鈹?  鈹斺攢鈹€ compressor.py            #   鈽?Session context compression
-鈹溾攢鈹€ bus/                         # Message routing (event bus)
-鈹溾攢鈹€ cron/                        # Scheduled task service
-鈹溾攢鈹€ heartbeat/                   # Proactive wake-up service
-鈹溾攢鈹€ providers/                   # LLM providers (LiteLLM-based)
-鈹溾攢鈹€ config/                      # Configuration schema & loader (Pydantic)
-鈹溾攢鈹€ skills/                      # Bundled skills (github, weather, tmux, cron, skill-creator, summarize)
-鈹溾攢鈹€ cli/                         # CLI commands
-鈹斺攢鈹€ utils/                       # Helpers
+```bash
+copy .env.example.knowledge .env
 ```
 
-> Items marked with 鈽?are new or significantly modified in this fork.
+修改 `.env` 中的数据库连接信息：
+
+```env
+NANOBOT_TOOLS__POSTGRES_KB__ENABLED=true
+NANOBOT_TOOLS__POSTGRES_KB__HOST=localhost
+NANOBOT_TOOLS__POSTGRES_KB__PORT=5432
+NANOBOT_TOOLS__POSTGRES_KB__DATABASE=nanobot_db
+NANOBOT_TOOLS__POSTGRES_KB__USER=postgres
+NANOBOT_TOOLS__POSTGRES_KB__PASSWORD=your_password
+```
+
+### Milvus / Chroma
+
+向量库示例：
+
+```env
+NANOBOT_TOOLS__MILVUS_RAG__ENABLED=true
+NANOBOT_TOOLS__MILVUS_RAG__DB_PATH=.nanobot/data/milvus_lite.db
+NANOBOT_TOOLS__MILVUS_RAG__COLLECTION_NAME=nanobot_knowledge
+NANOBOT_TOOLS__MILVUS_RAG__EMBEDDING_MODEL=Qwen/Qwen3-Embedding-0.6B
+NANOBOT_TOOLS__MILVUS_RAG__EMBEDDING_DEVICE=cpu
+```
+
+导入示例知识库：
+
+```bash
+python -m nanobot.scripts.import_knowledge --kb-path examples/knowledge_base --target all
+```
 
 ---
 
-## 馃檹 Acknowledgements
+## 安全说明
 
-This project is based on [nanobot](https://github.com/HKUDS/nanobot) by [HKUDS](https://github.com/HKUDS). Licensed under [MIT](./LICENSE).
+公开仓库中不应包含：
+
+- `config.json` 中的真实 API Key
+- 飞书 `appSecret`
+- OpenAI、OpenRouter、DeepSeek 等模型密钥
+- 数据库真实密码
+- `.nanobot/` 运行目录
+- `sessions/` 聊天历史
+- `media/` 图片和文件
+- `data/` 向量库、SQLite、embedding 索引
+- `.env`
+
+本项目已经在 `.gitignore` 中排除了常见运行数据，但发布前仍建议执行一次敏感信息检查。
+
+---
+
+## 部署到 GitHub
+
+如果你希望 GitHub Contributors 只显示自己，请使用全新的 Git 历史：
+
+```bash
+git init
+git config user.name "your-github-username"
+git config user.email "your-github-email"
+git add .
+git commit -m "Initial release"
+git branch -M main
+git remote add origin https://github.com/<your-username>/<your-repo>.git
+git push -u origin main
+```
+
+如果遇到 Git safe.directory 报错：
+
+```bash
+git config --global --add safe.directory C:/Users/sbsbs/Documents/Codex/2026-05-07/github-contributors/nanobot-feishu-github
+```
+
+---
+
+## License
+
+本项目基于 MIT License 发布。由于项目基于 nanobot 二次开发，请保留原项目许可证和版权声明。
