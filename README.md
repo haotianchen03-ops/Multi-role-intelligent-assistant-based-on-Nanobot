@@ -227,33 +227,20 @@ nanobot-feishu-github/
 ### 1. 克隆项目
 
 ```bash
-git clone https://github.com/<your-username>/<your-repo>.git
-cd <your-repo>
+cd [你希望存放项目的路径]
+git clone https://github.com/haotianchen03-ops/Multi-role-intelligent-assistant-based-on-Nanobot.git
 ```
 
 ### 2. 创建环境并安装
 
 ```bash
-python -m venv .venv
-```
-
-Windows:
-
-```bash
-.venv\Scripts\activate
-pip install -e .
-```
-
-macOS / Linux:
-
-```bash
-source .venv/bin/activate
-pip install -e .
+conda create --name nanobot python=3.12.7
 ```
 
 ### 3. 初始化配置
 
 ```bash
+conda activate nanobot
 nanobot onboard
 ```
 
