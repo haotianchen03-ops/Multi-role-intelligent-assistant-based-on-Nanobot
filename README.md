@@ -1,4 +1,4 @@
-# Multi-role Intelligent Assistant Based on Nanobot
+# 基于nanobot agent多场景多角色智能助手
 
 基于 nanobot 二次开发的智能问答助手。项目围绕企业知识库问答、飞书机器人接入、长短期记忆、工具调用、文档解析、图片生成和多会话管理做了完整扩展，适合部署为一个可在飞书、discord、钉钉、微信等平台中使用的个人或团队 AI 助手。
 
